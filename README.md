@@ -1,115 +1,90 @@
-# SmartSAS - Enterprise Smart Attendance System
+# SmartSAS: Enterprise Smart Attendance System
 
-An enterprise-grade, production-ready identity and attendance system utilizing high-performance face recognition, challenge-response liveness detection, and geolocation boundaries.
-
-## Architecture Highlights
-- **Recognition Layer (`ml_service`)**: Exposes microservice routes for RetinaFace/MTCNN face detection, ArcFace/FaceNet embeddings extraction, MediaPipe biometric liveness challenge verification, and vector similarities mapping.
-- **Vector Database**: Implements **FAISS (Facebook AI Similarity Search)** to run fast vector lookups at scale.
-- **Backend Core Gateway (`backend`)**: Uses **Python FastAPI** to handle JWT-based session security, user CRUD operations, geofence coordinates validation, and database records.
-- **Database Engine**: Uses **PostgreSQL** for persistence and **Redis** for liveness challenge queues.
-- **Frontend Panel (`frontend`)**: Rebuilt using **React + TypeScript + Tailwind CSS** featuring dynamic analytical dashboards, a biometric enrollment stepper, and camera scan verification feeds.
+SmartSAS is a production-grade, distributed biometric attendance and access gate platform. It couples edge face recognition and MediaPipe liveness detection with a central backend gateway, database logs, and a uTest-themed React administration dashboard.
 
 ---
 
-## Technical Stack
-- **AI Models**: RetinaFace / Haar Cascades (Face detection), ArcFace (512-dim embedding), MediaPipe FaceMesh (Eye aspect ratio & Head pose yaw/pitch estimation).
-- **APIs**: FastAPI (ASGI servers on Uvicorn).
-- **Frontend**: Vite, React, TypeScript, Tailwind CSS, Recharts (Charts).
-- **Database**: PostgreSQL (Data persistence), Redis (Session queues), FAISS (Vector search).
-- **Containers**: Docker and Docker Compose.
+## System Architecture
+
+```mermaid
+graph TD
+    Client[React Frontend] -->|API / Camera Streams| Gateway[FastAPI Backend Gateway]
+    Client -->|Base64 Frames| ML[FastAPI ML Service]
+    Gateway -->|Verify Vectors / Liveness| ML
+    Gateway -->|Relational Logs / Rules| DB[(PostgreSQL / SQLite)]
+    Gateway -->|Caches / Live Queues| Cache[(Redis)]
+```
+
+### Technology Stack
+1. **Frontend Dashboard**: React + TypeScript + Tailwind CSS (styled with official uTest theme palettes), Recharts (live analytics), and Lucide Icons.
+2. **Backend Gateway**: Python (FastAPI), SQLAlchemy ORM, SQLite/PostgreSQL, and PyJWT authentication.
+3. **Biometrics/ML Service**: FastAPI, OpenCV (DNN face detection), ArcFace (ONNX vector embeddings), MediaPipe FaceMesh (challenge-response blinking/pose liveness checks), and FAISS (similarity index search).
 
 ---
 
 ## Directory Structure
+
 ```text
-├── backend/               # FastAPI gateway, DB mappings, auth models
-│   ├── app/
-│   │   ├── auth.py        # OAuth2 password flow & JWT helper
-│   │   ├── crud.py        # Database operations & chart aggregate queries
-│   │   ├── database.py    # SQLAlchemy connection manager
-│   │   ├── main.py        # Gateway routers & geofence Haversine math
-│   │   ├── models.py      # SQLAlchemy relational schemas
-│   │   └── schemas.py     # Pydantic data schemas
-│   ├── Dockerfile
+├── backend/            # Central gateway managing accounts, logs, rules, and GPS checks
+│   ├── app/            # Source code (auth, database models, router endpoints)
 │   └── requirements.txt
-├── ml_service/            # Face analysis & FAISS vector matching service
-│   ├── app/
-│   │   ├── config.py      # Path settings & threshold levels
-│   │   ├── detector.py    # OpenCV DNN & Haar detection handlers
-│   │   ├── embedder.py    # ArcFace ONNX / LSH random projection models
-│   │   ├── liveness.py    # MediaPipe liveness checker (yaw, pitch, blink EAR)
-│   │   ├── main.py        # Face registration and verification endpoints
-│   │   └── vector_db.py   # FAISS index and local metadata mappings
-│   ├── Dockerfile
+├── ml_service/         # Biometrics engine handling face detection, embeddings, & liveness
+│   ├── app/            # Source code (detector, embedder, liveness verify, vector DB)
 │   └── requirements.txt
-├── frontend/              # Vite React dashboard and check-in panels
-│   ├── src/
-│   │   ├── components/    # Layout, check-in camera, enrollment studio
-│   │   ├── pages/         # Analytics, logs, settings, roster management
-│   │   └── services/      # Axios endpoints client
-│   ├── Dockerfile
+├── frontend/           # uTest styled single page web application client
+│   ├── src/            # Components (CheckInCamera, EnrollmentStudio, Dashboard, Roster)
 │   └── package.json
-└── docker-compose.yml     # Orchestrates full stack local environment
+├── docker-compose.yml  # Multi-service container orchestration
+└── README.md
 ```
 
 ---
 
-## Getting Started
+## Quick Start (Docker Compose)
 
-### Option A: Running with Docker Compose (Recommended)
-Ensure you have Docker and Docker Desktop running on your machine, then run:
+The easiest way to start all services (Frontend, Backend, and ML Service) is with Docker Compose:
 
 ```bash
 docker-compose up --build
 ```
-
-This commands spins up:
-- PostgreSQL database on port `5432`
-- Redis server on port `6379`
-- Face recognition ML engine on `http://localhost:8001`
-- Gateway REST API on `http://localhost:8000`
-- Web Dashboard on `http://localhost:5173`
+Once built, open [http://localhost:5173](http://localhost:5173) in your web browser.
 
 ---
 
-### Option B: Local Setup & Manual Run
+## Local Development Setup
 
-#### 1. Start Database & Redis
-Ensure standard PostgreSQL and Redis servers are running locally on their default ports.
-
-#### 2. Run ML inference Service
+### 1. ML Biometrics Service
 ```bash
 cd ml_service
 python -m venv venv
-venv\Scripts\activate      # On Windows
+.\venv\Scripts\activate
 pip install -r requirements.txt
-python app/main.py
+python -m app.main
 ```
+Runs at [http://localhost:8001](http://localhost:8001).
 
-#### 3. Run Backend Gateway Service
+### 2. Backend Gateway
 ```bash
 cd backend
 python -m venv venv
-venv\Scripts\activate      # On Windows
+.\venv\Scripts\activate
 pip install -r requirements.txt
-python app/main.py
+python -m app.main
 ```
+Runs at [http://localhost:8000](http://localhost:8000).
 
-#### 4. Run React Web Interface
+### 3. React Frontend Client
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-
-Open `http://localhost:5173` in your browser.
+Runs at [http://localhost:5173](http://localhost:5173).
 
 ---
 
-## Seed Accounts & Credentials
+## Default Admin Credentials
 
-By default, the gateway seeds an initial Administrator profile to log in and register other employees:
-- **Employee ID:** `EMP-1011`
-- **Password:** `admin123`
-
-Log in with this admin ID, navigate to the **Employee Roster** tab, register your personnel, and click **Enroll Face** to capture their biometric vectors!
+On database initialization, a default manager account is seeded:
+* **Employee ID**: `EMP-1011`
+* **Password**: `admin123`
