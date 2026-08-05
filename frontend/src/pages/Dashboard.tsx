@@ -33,7 +33,7 @@ export const Dashboard: React.FC = () => {
     try {
       const statsRes = await api.get('/api/v1/dashboard/stats');
       const chartsRes = await api.get('/api/v1/dashboard/charts');
-      const logsRes = await api.get('/api/v1/logs', { params: { limit: 6 } });
+      const logsRes = await api.get('/api/v1/logs', { params: { limit: 12 } });
       
       setStats(statsRes.data);
       setChartData(chartsRes.data);
@@ -91,7 +91,6 @@ export const Dashboard: React.FC = () => {
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-5">
         {statCards.map((card, i) => {
           const Icon = card.icon;
-          // Blend colors: make the Attendance Rate card a solid uTest gradient!
           const isAttendanceRate = card.label === 'Attendance Rate';
           
           if (isAttendanceRate) {
@@ -122,109 +121,113 @@ export const Dashboard: React.FC = () => {
         })}
       </div>
 
-      {/* Main split row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Charts pane */}
-        <div className="lg:col-span-2 glass-panel rounded-3xl border border-slate-200 p-6 shadow-glass">
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h3 className="text-sm font-black text-slate-800 tracking-wide uppercase">Daily Attendance Summary</h3>
-              <p className="text-xs text-slate-400 mt-1">Analytics computed over the previous week</p>
-            </div>
-            <button 
-              onClick={fetchDashboardData}
-              className="p-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-400 hover:text-slate-650 transition-all duration-200"
-            >
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            </button>
+      {/* Daily Attendance Summary - Full Width Section */}
+      <div className="glass-panel rounded-3xl border border-slate-200 p-6 shadow-glass">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h3 className="text-sm font-black text-slate-800 tracking-wide uppercase">Daily Attendance Summary</h3>
+            <p className="text-xs text-slate-400 mt-1">Analytics computed over the previous week</p>
           </div>
-
-          <div className="h-80 w-full">
-            {chartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.02)" />
-                  <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} tickLine={false} />
-                  <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#ffffff', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '12px' }}
-                    labelStyle={{ color: '#0f172a', fontWeight: 'bold', fontSize: '12px' }}
-                    itemStyle={{ fontSize: '11px' }}
-                  />
-                  <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: '11px', color: '#64748b' }} />
-                  {/* Chart bars custom colors matching uTest primary/accent */}
-                  <Bar dataKey="on_time" name="On Time" stackId="a" fill="#00A8CC" barSize={16} />
-                  <Bar dataKey="late" name="Late Logs" stackId="a" fill="#4DC2DB" />
-                  <Bar dataKey="absent" name="Absent" stackId="a" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-xs text-slate-400 font-medium">No analytics logs recorded.</div>
-            )}
-          </div>
+          <button 
+            onClick={fetchDashboardData}
+            className="p-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-400 hover:text-slate-650 transition-all duration-200"
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          </button>
         </div>
 
-        {/* Live check-in logs feed */}
-        <div className="glass-panel rounded-3xl border border-slate-200 p-6 flex flex-col justify-between shadow-glass">
-          <div>
-            <div className="flex justify-between items-center mb-6">
-              <div>
-                <h3 className="text-sm font-black text-slate-800 tracking-wide uppercase">Live Check-in Stream</h3>
-                <p className="text-xs text-slate-400 mt-1">Real-time gate verification events</p>
-              </div>
-              <span className="w-2 h-2 rounded-full bg-success animate-ping"></span>
-            </div>
+        <div className="h-80 w-full">
+          {chartData.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.02)" />
+                <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} tickLine={false} />
+                <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#ffffff', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '12px' }}
+                  labelStyle={{ color: '#0f172a', fontWeight: 'bold', fontSize: '12px' }}
+                  itemStyle={{ fontSize: '11px' }}
+                />
+                <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: '11px', color: '#64748b' }} />
+                <Bar dataKey="on_time" name="On Time" stackId="a" fill="#00A8CC" barSize={18} />
+                <Bar dataKey="late" name="Late Logs" stackId="a" fill="#4DC2DB" />
+                <Bar dataKey="absent" name="Absent" stackId="a" fill="#ef4444" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-xs text-slate-400 font-medium">No analytics logs recorded.</div>
+          )}
+        </div>
+      </div>
 
-            <div className="space-y-3">
-              {liveLogs.length > 0 ? (
-                liveLogs.map((log) => (
-                  <div key={log.id} className="p-3 bg-[#f8fafc] border border-slate-200/80 rounded-xl flex items-center justify-between transition-all duration-200 hover:border-slate-350">
-                    <div className="flex items-center space-x-3 min-w-0">
-                      <div className="relative">
-                        <div className={`absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full border-2 border-white ${log.action_type === 'CHECK_OUT' ? 'bg-purple-600' : 'bg-emerald-500'}`}></div>
-                        <img 
-                          src={log.avatar_url || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150"} 
-                          alt={log.name}
-                          className="w-10 h-10 rounded-xl object-cover border border-slate-200 shadow-sm"
-                        />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-xs font-extrabold text-slate-800 truncate">{log.name}</div>
-                        <div className="text-[10px] text-[#00A8CC] font-mono font-bold">{log.employee_id} • <span className="text-slate-400 font-normal">{log.group}</span></div>
-                      </div>
-                    </div>
-                    
-                    <div className="text-right flex flex-col items-end">
-                      <div className="text-[10px] text-slate-400 font-bold font-mono">{new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-                      <div className="flex items-center space-x-1 mt-0.5">
-                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase ${
-                          log.action_type === 'CHECK_OUT'
-                            ? 'bg-purple-100 text-purple-700 border border-purple-200'
-                            : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
-                        }`}>
-                          {log.action_type || 'CHECK_IN'}
-                        </span>
-                        <span className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase ${
-                          log.status === 'LATE' 
-                            ? 'bg-[#4DC2DB]/10 text-[#00819D] border border-[#4DC2DB]/20' 
-                            : log.status === 'CHECK OUT'
-                            ? 'bg-purple-100 text-purple-700 border border-purple-200'
-                            : 'bg-[#00A8CC]/10 text-[#00A8CC] border border-[#00A8CC]/20'
-                        }`}>
-                          {log.status}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-center py-12 text-xs text-slate-400 font-medium">No check-in operations today yet.</div>
-              )}
-            </div>
+      {/* Live Check-in Stream - Placed Under Daily Attendance Summary */}
+      <div className="glass-panel rounded-3xl border border-slate-200 p-6 shadow-glass">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h3 className="text-sm font-black text-slate-800 tracking-wide uppercase flex items-center space-x-2">
+              <span>Live Check-in Stream</span>
+              <span className="w-2 h-2 rounded-full bg-success animate-ping inline-block"></span>
+            </h3>
+            <p className="text-xs text-slate-400 mt-1">Real-time biometric gate verification events and identity stream</p>
           </div>
+          <span className="text-xs font-mono font-bold text-[#00A8CC] bg-[#00A8CC]/10 px-3 py-1 rounded-full border border-[#00A8CC]/20">
+            {liveLogs.length} Events Logged Today
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {liveLogs.length > 0 ? (
+            liveLogs.map((log) => (
+              <div key={log.id} className="p-4 bg-[#f8fafc] border border-slate-200/80 rounded-2xl flex items-center justify-between transition-all duration-200 hover:border-[#00A8CC]/40 shadow-sm">
+                <div className="flex items-center space-x-3.5 min-w-0">
+                  <div className="relative flex-shrink-0">
+                    <div className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-white ${log.action_type === 'CHECK_OUT' ? 'bg-purple-600' : 'bg-emerald-500'}`}></div>
+                    <img 
+                      src={log.avatar_url || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150"} 
+                      alt={log.name}
+                      className="w-12 h-12 rounded-xl object-cover border border-slate-200 shadow-sm"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-extrabold text-slate-800 truncate">{log.name}</div>
+                    <div className="text-[10px] text-[#00A8CC] font-mono font-bold">{log.employee_id}</div>
+                    <div className="text-[10px] text-slate-400 font-semibold truncate">{log.group}</div>
+                  </div>
+                </div>
+                
+                <div className="text-right flex flex-col items-end flex-shrink-0">
+                  <div className="text-[10px] text-slate-500 font-bold font-mono">{new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                  <div className="flex items-center space-x-1.5 mt-1.5">
+                    <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase ${
+                      log.action_type === 'CHECK_OUT'
+                        ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                        : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                    }`}>
+                      {log.action_type || 'CHECK_IN'}
+                    </span>
+                    <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded uppercase ${
+                      log.status === 'LATE' 
+                        ? 'bg-warning/10 text-warning border border-warning/20' 
+                        : log.status === 'CHECK OUT'
+                        ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                        : 'bg-success/10 text-success border border-success/20'
+                    }`}>
+                      {log.status}
+                    </span>
+                  </div>
+                  <div className="text-[9px] text-slate-400 font-medium mt-1">{log.method}</div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="col-span-full text-center py-12 text-xs text-slate-400 font-medium bg-[#f8fafc] rounded-2xl border border-dashed border-slate-200">
+              No check-in operations today yet.
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 };
+
 export default Dashboard;
