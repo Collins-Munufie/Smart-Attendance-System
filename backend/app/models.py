@@ -44,7 +44,8 @@ class AttendanceLog(Base):
     name = Column(String, nullable=False)
     group = Column(String, nullable=False)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
-    status = Column(String, default="ON TIME")  # "ON TIME" or "LATE"
+    action_type = Column(String, default="CHECK_IN")  # "CHECK_IN" or "CHECK_OUT"
+    status = Column(String, default="ON TIME")  # "ON TIME" or "LATE" or "CHECK OUT"
     method = Column(String, default="AI Face ID")  # "AI Face ID", "GPS Geofence", "QR Badge Pass"
     location = Column(String, default="HQ Main Door")
     verification_score = Column(Float, nullable=True) # Cosine similarity score

@@ -38,7 +38,7 @@ export const Layout: React.FC<LayoutProps> = ({
     { id: 'dash', label: 'Analytics Dashboard', icon: LayoutDashboard, roles: ['employer'] },
     { id: 'roster', label: 'Employee Roster', icon: Users, roles: ['employer'] },
     { id: 'logs', label: 'Attendance Logs', icon: History, roles: ['employer', 'employee'] },
-    { id: 'settings', label: 'Rules & Geofence', icon: Settings, roles: ['employer'] },
+    { id: 'settings', label: 'My Profile & Settings', icon: Settings, roles: ['employer', 'employee'] },
     { id: 'checkin', label: 'Live Check-in Portal', icon: Camera, roles: ['employer', 'employee'] },
   ];
 
@@ -72,16 +72,20 @@ export const Layout: React.FC<LayoutProps> = ({
           </div>
 
           {/* Current profile summary */}
-          <div className="p-4 mx-4 my-4 bg-white/10 border border-white/15 rounded-2xl flex items-center space-x-3">
+          <div 
+            onClick={() => setActiveTab('settings')}
+            className="p-4 mx-4 my-4 bg-white/10 border border-white/15 hover:bg-white/20 cursor-pointer transition-all duration-150 rounded-2xl flex items-center space-x-3"
+            title="Click to customize your profile"
+          >
             <img 
               src={user?.avatar_url || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150"} 
               alt="Avatar" 
               className="w-10 h-10 rounded-xl object-cover ring-2 ring-white/20"
             />
             <div className="overflow-hidden">
-              <div className="text-xs font-bold text-white truncate">{user?.name || 'David Kim'}</div>
+              <div className="text-xs font-bold text-white truncate">{user?.name || 'Employee'}</div>
               <div className="text-[9px] text-white/95 font-extrabold uppercase tracking-wider">{user?.role === 'employer' ? 'Administrator' : 'Staff Member'}</div>
-              <div className="text-[9px] text-white/70 truncate">{user?.group || 'HQ Operations'}</div>
+              <div className="text-[9px] text-white/70 truncate">Customize Profile &gt;</div>
             </div>
           </div>
 

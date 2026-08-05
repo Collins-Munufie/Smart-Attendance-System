@@ -12,10 +12,10 @@ from typing import List, Dict, Optional, Tuple
 from app.database import settings, engine, Base, get_db
 from app.models import User, AttendanceLog
 from app.schemas import (
-    Token, UserCreate, UserUpdate, UserResponse,
-    AttendanceLogResponse, GeofenceRuleCreate, GeofenceRuleResponse,
+    Token, UserCreate, UserUpdate, UserResponse, UserProfileUpdate,
+    AttendanceLogResponse, AttendanceStatusResponse, GeofenceRuleCreate, GeofenceRuleResponse,
     RuleConfigurationCreate, RuleConfigurationResponse, DashboardStats,
-    DailyLogChartItem, FaceCheckInRequest, RFIDCheckInRequest
+    DailyLogChartItem, FaceCheckInRequest, RFIDCheckInRequest, FaceLoginRequest
 )
 from app.auth import (
     create_access_token, get_current_active_user, get_current_admin,
@@ -23,8 +23,18 @@ from app.auth import (
 )
 import app.crud as crud
 
+from sqlalchemy import text
+
 # Create database tables automatically
 Base.metadata.create_all(bind=engine)
+
+# Auto-migrate missing columns for SQLite
+try:
+    with engine.connect() as conn:
+        conn.execute(text("ALTER TABLE attendance_logs ADD COLUMN action_type VARCHAR DEFAULT 'CHECK_IN'"))
+        conn.commit()
+except Exception:
+    pass  # Column already exists
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -121,6 +131,40 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
     access_token = create_access_token(data={"sub": user.employee_id, "role": user.role})
     return {"access_token": access_token, "token_type": "bearer"}
 
+@app.post("/api/v1/auth/face-login", response_model=Token)
+def login_with_face(request: FaceLoginRequest, db: Session = Depends(get_db)):
+    try:
+        res = requests.post(
+            f"{settings.ML_SERVICE_URL}/search-image",
+            json={"image": request.image, "top_k": 1},
+            timeout=10
+        )
+        if res.status_code != 200:
+            err_detail = res.json().get("detail", "ML Face Search failed")
+            raise HTTPException(status_code=res.status_code, detail=err_detail)
+            
+        data = res.json()
+        if not data.get("is_match") or not data.get("matched_user"):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Face login failed: Biometric key does not match any registered employee face."
+            )
+            
+        matched_emp_id = data["matched_user"]["user_id"]
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Connection error to ML Service during face login: {e}")
+        raise HTTPException(status_code=503, detail="Face recognition engine is offline")
+        
+    user = crud.get_user_by_employee_id(db, matched_emp_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Matched employee record not found in system")
+        
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="This account is deactivated")
+        
+    access_token = create_access_token(data={"sub": user.employee_id, "role": user.role})
+    return {"access_token": access_token, "token_type": "bearer"}
+
 
 # --- User Management ---
 @app.post("/api/v1/users", response_model=UserResponse)
@@ -137,6 +181,13 @@ def get_users_list(skip: int = 0, limit: int = 100, db: Session = Depends(get_db
 @app.get("/api/v1/users/me", response_model=UserResponse)
 def get_me(current_user: User = Depends(get_current_active_user)):
     return current_user
+
+@app.put("/api/v1/users/me/profile", response_model=UserResponse)
+def update_my_profile(profile_data: UserProfileUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
+    updated_user = crud.update_user_profile(db, current_user.id, profile_data.avatar_url)
+    if not updated_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return updated_user
 
 @app.put("/api/v1/users/{user_id}", response_model=UserResponse)
 def edit_user(user_id: int, user: UserUpdate, db: Session = Depends(get_db), current_admin: User = Depends(get_current_admin)):
@@ -217,7 +268,12 @@ def update_config(config: RuleConfigurationCreate, db: Session = Depends(get_db)
     return crud.update_rule_config(db, config)
 
 
-# --- Core Face Recognition Check-In ---
+# --- Attendance Status & Check-In/Out ---
+@app.get("/api/v1/attendance/my-status", response_model=AttendanceStatusResponse)
+def get_my_attendance_status(db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
+    status_info = crud.get_user_today_attendance_status(db, current_user.employee_id)
+    return status_info
+
 @app.post("/api/v1/check-in/face", response_model=AttendanceLogResponse)
 def check_in_by_face(request: FaceCheckInRequest, db: Session = Depends(get_db)):
     # 1. Geofence location check
@@ -265,27 +321,32 @@ def check_in_by_face(request: FaceCheckInRequest, db: Session = Depends(get_db))
     if not user.is_active:
         raise HTTPException(status_code=403, detail="This account is deactivated")
         
-    # 4. Check time limits for ON TIME vs LATE
-    config = crud.get_rule_config(db)
-    now = datetime.datetime.now()
-    
-    # Parse shift start time (e.g., "09:00")
-    try:
-        sh_hour, sh_min = map(int, config.shift_start_time.split(":"))
-        shift_time = now.replace(hour=sh_hour, minute=sh_min, second=0, microsecond=0)
-    except Exception:
-        # Fallback if invalid format
-        shift_time = now.replace(hour=9, minute=0, second=0, microsecond=0)
-        
-    # Add late threshold & grace
-    allowed_limit = shift_time + datetime.timedelta(minutes=config.late_threshold_minutes + config.grace_period_minutes)
-    
-    # Simple check-in check
-    status_label = "ON TIME"
-    # User is late if check-in is after shift + late threshold + grace, and it is today morning/daytime
-    # For a fairer check, if check-in time exceeds shift start time by allowed threshold:
-    if now > allowed_limit:
-        status_label = "LATE"
+    action_type = request.action_type if request.action_type in ["CHECK_IN", "CHECK_OUT"] else "CHECK_IN"
+
+    # Validate check-out requirement
+    status_info = crud.get_user_today_attendance_status(db, user.employee_id)
+    if action_type == "CHECK_OUT" and not status_info["is_checked_in"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot check out: You must check in first before checking out."
+        )
+
+    # 4. Determine status label
+    if action_type == "CHECK_OUT":
+        status_label = "CHECK OUT"
+    else:
+        config = crud.get_rule_config(db)
+        now = datetime.datetime.now()
+        try:
+            sh_hour, sh_min = map(int, config.shift_start_time.split(":"))
+            shift_time = now.replace(hour=sh_hour, minute=sh_min, second=0, microsecond=0)
+        except Exception:
+            shift_time = now.replace(hour=9, minute=0, second=0, microsecond=0)
+            
+        allowed_limit = shift_time + datetime.timedelta(minutes=config.late_threshold_minutes + config.grace_period_minutes)
+        status_label = "ON TIME"
+        if now > allowed_limit:
+            status_label = "LATE"
         
     # 5. Write log to database
     log = crud.create_attendance_log(
@@ -294,6 +355,7 @@ def check_in_by_face(request: FaceCheckInRequest, db: Session = Depends(get_db))
         employee_id=user.employee_id,
         name=user.name,
         group=user.group,
+        action_type=action_type,
         status=status_label,
         method="AI Face ID",
         location=request.location_name,
@@ -316,19 +378,30 @@ def check_in_by_rfid(request: RFIDCheckInRequest, db: Session = Depends(get_db))
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account mapped to RFID tag is deactivated")
         
-    config = crud.get_rule_config(db)
-    now = datetime.datetime.now()
-    
-    try:
-        sh_hour, sh_min = map(int, config.shift_start_time.split(":"))
-        shift_time = now.replace(hour=sh_hour, minute=sh_min, second=0, microsecond=0)
-    except Exception:
-        shift_time = now.replace(hour=9, minute=0, second=0, microsecond=0)
-        
-    allowed_limit = shift_time + datetime.timedelta(minutes=config.late_threshold_minutes + config.grace_period_minutes)
-    status_label = "ON TIME"
-    if now > allowed_limit:
-        status_label = "LATE"
+    action_type = request.action_type if request.action_type in ["CHECK_IN", "CHECK_OUT"] else "CHECK_IN"
+
+    status_info = crud.get_user_today_attendance_status(db, user.employee_id)
+    if action_type == "CHECK_OUT" and not status_info["is_checked_in"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot check out: You must check in first before checking out."
+        )
+
+    if action_type == "CHECK_OUT":
+        status_label = "CHECK OUT"
+    else:
+        config = crud.get_rule_config(db)
+        now = datetime.datetime.now()
+        try:
+            sh_hour, sh_min = map(int, config.shift_start_time.split(":"))
+            shift_time = now.replace(hour=sh_hour, minute=sh_min, second=0, microsecond=0)
+        except Exception:
+            shift_time = now.replace(hour=9, minute=0, second=0, microsecond=0)
+            
+        allowed_limit = shift_time + datetime.timedelta(minutes=config.late_threshold_minutes + config.grace_period_minutes)
+        status_label = "ON TIME"
+        if now > allowed_limit:
+            status_label = "LATE"
         
     log = crud.create_attendance_log(
         db,
@@ -336,6 +409,7 @@ def check_in_by_rfid(request: RFIDCheckInRequest, db: Session = Depends(get_db))
         employee_id=user.employee_id,
         name=user.name,
         group=user.group,
+        action_type=action_type,
         status=status_label,
         method="QR Badge Pass" if "QR" in request.location_name else "RFID Badge Pass",
         location=request.location_name,

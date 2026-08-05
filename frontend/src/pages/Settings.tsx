@@ -88,6 +88,10 @@ export const Settings: React.FC = () => {
     }
   };
 
+  const localUser = localStorage.getItem('smart_attendance_user');
+  const currentUser = localUser ? JSON.parse(localUser) : null;
+  const isAdmin = currentUser?.role === 'employer';
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       {feedback.message && (
@@ -100,16 +104,21 @@ export const Settings: React.FC = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Shift configuration */}
-        <div className="glass-panel rounded-3xl border border-slate-200 p-6 shadow-glass space-y-6">
-          <div>
-            <h3 className="text-sm font-black text-slate-800 flex items-center space-x-2 uppercase tracking-wide">
-              <Clock size={16} className="text-primary-500" />
-              <span>Shift Timing & Leniency</span>
-            </h3>
-            <p className="text-xs text-slate-400 mt-1">Configure global grace periods and shift start targets</p>
-          </div>
+      {/* Employee Profile Picture Customization Card (Always accessible to every employee & admin) */}
+      <ProfileAvatarCard onProfileUpdated={() => fetchData()} />
+
+      {/* Admin Rules & Geofencing Configurations */}
+      {isAdmin && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Shift configuration */}
+          <div className="glass-panel rounded-3xl border border-slate-200 p-6 shadow-glass space-y-6">
+            <div>
+              <h3 className="text-sm font-black text-slate-800 flex items-center space-x-2 uppercase tracking-wide">
+                <Clock size={16} className="text-primary-500" />
+                <span>Shift Timing & Leniency</span>
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">Configure global grace periods and shift start targets</p>
+            </div>
 
           <form onSubmit={handleSaveConfig} className="space-y-5">
             <div className="space-y-1">
@@ -236,7 +245,139 @@ export const Settings: React.FC = () => {
           </div>
         </div>
       </div>
+    )}
+  </div>
+);
+};
+
+// Profile Avatar Card Component
+const ProfileAvatarCard: React.FC<{ onProfileUpdated: () => void }> = ({ onProfileUpdated }) => {
+  const [currentUser, setCurrentUser] = useState<any>(() => {
+    const saved = localStorage.getItem('smart_attendance_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+  
+  const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatar_url || '');
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ type: 'success' | 'error' | null; text: string }>({ type: null, text: '' });
+
+  const avatarPresets = [
+    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+    'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
+    'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150',
+    'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150',
+    'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150',
+    'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150'
+  ];
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        setMsg({ type: 'error', text: 'Image size should be less than 2MB' });
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAvatarUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setMsg({ type: null, text: '' });
+
+    try {
+      const response = await api.put('/api/v1/users/me/profile', { avatar_url: avatarUrl });
+      const updatedUser = response.data;
+      localStorage.setItem('smart_attendance_user', JSON.stringify(updatedUser));
+      setCurrentUser(updatedUser);
+      setMsg({ type: 'success', text: 'Profile picture updated successfully!' });
+      window.dispatchEvent(new Event('storage'));
+      onProfileUpdated();
+    } catch (err: any) {
+      setMsg({ type: 'error', text: err.response?.data?.detail || 'Failed to update profile picture.' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="glass-panel rounded-3xl border border-slate-200 p-6 shadow-glass space-y-6">
+      <div>
+        <h3 className="text-sm font-black text-slate-800 flex items-center space-x-2 uppercase tracking-wide">
+          <Award size={16} className="text-[#00A8CC]" />
+          <span>My Profile Picture Customization</span>
+        </h3>
+        <p className="text-xs text-slate-400 mt-1">Customize your employee avatar with presets or upload your own profile image</p>
+      </div>
+
+      {msg.text && (
+        <div className={`p-3 rounded-xl text-xs font-semibold ${msg.type === 'success' ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'}`}>
+          {msg.text}
+        </div>
+      )}
+
+      <form onSubmit={handleSaveProfile} className="space-y-6">
+        <div className="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-6">
+          {/* Avatar Preview */}
+          <div className="relative group">
+            <img 
+              src={avatarUrl || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150'} 
+              alt="Profile Avatar Preview"
+              className="w-24 h-24 rounded-2xl object-cover border-2 border-[#00A8CC]/30 shadow-md transition-all duration-200" 
+            />
+          </div>
+
+          {/* Upload input and presets */}
+          <div className="flex-1 space-y-4 w-full">
+            <div>
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
+                Upload Custom Photo
+              </label>
+              <input 
+                type="file" 
+                accept="image/*"
+                onChange={handleFileUpload}
+                className="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#00A8CC]/10 file:text-[#00A8CC] hover:file:bg-[#00A8CC]/20 cursor-pointer"
+              />
+            </div>
+
+            <div>
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
+                Or Select Avatar Preset
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {avatarPresets.map((preset, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setAvatarUrl(preset)}
+                    className={`w-10 h-10 rounded-xl overflow-hidden border-2 transition-all duration-150 ${
+                      avatarUrl === preset ? 'border-[#00A8CC] scale-105 shadow-md' : 'border-transparent hover:border-slate-300'
+                    }`}
+                  >
+                    <img src={preset} alt={`Preset ${idx + 1}`} className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          disabled={saving}
+          className="w-full py-3 bg-[#00A8CC] hover:bg-[#00819D] text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-lg shadow-[#00A8CC]/15 transition-all duration-200 disabled:opacity-50"
+        >
+          {saving ? 'Saving Profile...' : 'Save Profile Picture'}
+        </button>
+      </form>
     </div>
   );
 };
+
 export default Settings;

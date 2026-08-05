@@ -79,18 +79,38 @@ def enroll_user_face(db: Session, user_id: int, samples_count: int = 5) -> FaceE
     return db_enroll
 
 # --- Attendance Logs CRUD ---
-def get_attendance_logs(db: Session, skip: int = 0, limit: int = 100, employee_id: Optional[str] = None) -> List[AttendanceLog]:
-    query = db.query(AttendanceLog)
+def get_attendance_logs(db: Session, skip: int = 0, limit: int = 100, employee_id: Optional[str] = None) -> List[dict]:
+    query = db.query(AttendanceLog, User.avatar_url).outerjoin(User, AttendanceLog.user_id == User.id)
     if employee_id:
         query = query.filter(AttendanceLog.employee_id == employee_id)
-    return query.order_by(AttendanceLog.timestamp.desc()).offset(skip).limit(limit).all()
+    results = query.order_by(AttendanceLog.timestamp.desc()).offset(skip).limit(limit).all()
+    
+    logs = []
+    for log, avatar_url in results:
+        log_dict = {
+            "id": log.id,
+            "user_id": log.user_id,
+            "employee_id": log.employee_id,
+            "name": log.name,
+            "group": log.group,
+            "action_type": log.action_type,
+            "status": log.status,
+            "method": log.method,
+            "location": log.location,
+            "verification_score": log.verification_score,
+            "timestamp": log.timestamp,
+            "avatar_url": avatar_url or "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150"
+        }
+        logs.append(log_dict)
+    return logs
 
-def create_attendance_log(db: Session, user_id: int, employee_id: str, name: str, group: str, status: str, method: str, location: str, score: Optional[float] = None) -> AttendanceLog:
+def create_attendance_log(db: Session, user_id: int, employee_id: str, name: str, group: str, status: str, method: str, location: str, score: Optional[float] = None, action_type: str = "CHECK_IN") -> dict:
     db_log = AttendanceLog(
         user_id=user_id,
         employee_id=employee_id,
         name=name,
         group=group,
+        action_type=action_type,
         status=status,
         method=method,
         location=location,
@@ -99,7 +119,49 @@ def create_attendance_log(db: Session, user_id: int, employee_id: str, name: str
     db.add(db_log)
     db.commit()
     db.refresh(db_log)
-    return db_log
+
+    user = get_user_by_id(db, user_id)
+    avatar_url = user.avatar_url if user else "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150"
+
+    return {
+        "id": db_log.id,
+        "user_id": db_log.user_id,
+        "employee_id": db_log.employee_id,
+        "name": db_log.name,
+        "group": db_log.group,
+        "action_type": db_log.action_type,
+        "status": db_log.status,
+        "method": db_log.method,
+        "location": db_log.location,
+        "verification_score": db_log.verification_score,
+        "timestamp": db_log.timestamp,
+        "avatar_url": avatar_url
+    }
+
+def get_user_today_attendance_status(db: Session, employee_id: str) -> dict:
+    today_start = datetime.datetime.combine(datetime.date.today(), datetime.time.min)
+    latest_log = db.query(AttendanceLog).filter(
+        AttendanceLog.employee_id == employee_id,
+        AttendanceLog.timestamp >= today_start
+    ).order_by(AttendanceLog.timestamp.desc()).first()
+
+    if not latest_log:
+        return {"is_checked_in": False, "last_action": None, "last_log_time": None}
+
+    is_checked_in = (latest_log.action_type == "CHECK_IN")
+    return {
+        "is_checked_in": is_checked_in,
+        "last_action": latest_log.action_type,
+        "last_log_time": latest_log.timestamp
+    }
+
+def update_user_profile(db: Session, user_id: int, avatar_url: str) -> Optional[User]:
+    db_user = get_user_by_id(db, user_id)
+    if db_user:
+        db_user.avatar_url = avatar_url
+        db.commit()
+        db.refresh(db_user)
+    return db_user
 
 # --- Geofence Rules CRUD ---
 def get_geofence_rules(db: Session) -> List[GeofenceRule]:

@@ -24,6 +24,15 @@ function App() {
       setActiveTab(parsed.role === 'employer' ? 'dash' : 'checkin');
     }
     setLoading(false);
+
+    const handleStorageChange = () => {
+      const updatedLocalUser = localStorage.getItem('smart_attendance_user');
+      if (updatedLocalUser) {
+        setUser(JSON.parse(updatedLocalUser));
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
   const handleLogout = () => {

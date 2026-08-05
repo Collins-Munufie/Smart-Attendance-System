@@ -31,8 +31,12 @@ class UserUpdate(BaseModel):
     role: Optional[str] = None
     group: Optional[str] = None
     rfid_card: Optional[str] = None
+    avatar_url: Optional[str] = None
     password: Optional[str] = None
     is_active: Optional[bool] = None
+
+class UserProfileUpdate(BaseModel):
+    avatar_url: str
 
 class UserResponse(UserBase):
     id: int
@@ -55,6 +59,7 @@ class FaceEnrollmentResponse(BaseModel):
 # Attendance Log Schemas
 class AttendanceLogBase(BaseModel):
     employee_id: str
+    action_type: str = "CHECK_IN"
     status: str
     method: str
     location: str
@@ -69,10 +74,16 @@ class AttendanceLogResponse(AttendanceLogBase):
     id: int
     name: str
     group: str
+    avatar_url: Optional[str] = None
     timestamp: datetime
 
     class Config:
         from_attributes = True
+
+class AttendanceStatusResponse(BaseModel):
+    is_checked_in: bool
+    last_action: Optional[str] = None
+    last_log_time: Optional[datetime] = None
 
 class DashboardStats(BaseModel):
     total_employees: int
@@ -126,13 +137,18 @@ class RuleConfigurationResponse(RuleConfigurationBase):
     class Config:
         from_attributes = True
 
-# Check-in Requests
+# Check-in & Auth Requests
+class FaceLoginRequest(BaseModel):
+    image: str = Field(..., description="Base64 encoded image frame for face login")
+
 class FaceCheckInRequest(BaseModel):
     image: str = Field(..., description="Base64 frame or data URL of the face")
+    action_type: str = Field("CHECK_IN", description="CHECK_IN or CHECK_OUT")
     latitude: Optional[float] = Field(None, description="GPS Latitude")
     longitude: Optional[float] = Field(None, description="GPS Longitude")
     location_name: str = Field("HQ Entrance", description="Check-in location")
 
 class RFIDCheckInRequest(BaseModel):
     rfid_card: str = Field(..., description="RFID card unique identification tag")
+    action_type: str = Field("CHECK_IN", description="CHECK_IN or CHECK_OUT")
     location_name: str = Field("RFID Gate Reader", description="Check-in reader location")

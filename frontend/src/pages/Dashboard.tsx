@@ -181,26 +181,39 @@ export const Dashboard: React.FC = () => {
                   <div key={log.id} className="p-3 bg-[#f8fafc] border border-slate-200/80 rounded-xl flex items-center justify-between transition-all duration-200 hover:border-slate-350">
                     <div className="flex items-center space-x-3 min-w-0">
                       <div className="relative">
-                        <div className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full ${log.status === 'LATE' ? 'bg-[#4DC2DB]' : 'bg-[#00A8CC]'}`}></div>
-                        <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-xs text-slate-550 font-black uppercase border border-slate-200">
-                          {log.name.split(' ').map((n: string) => n[0]).join('')}
-                        </div>
+                        <div className={`absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full border-2 border-white ${log.action_type === 'CHECK_OUT' ? 'bg-purple-600' : 'bg-emerald-500'}`}></div>
+                        <img 
+                          src={log.avatar_url || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150"} 
+                          alt={log.name}
+                          className="w-10 h-10 rounded-xl object-cover border border-slate-200 shadow-sm"
+                        />
                       </div>
                       <div className="min-w-0">
-                        <div className="text-xs font-bold text-slate-800 truncate">{log.name}</div>
-                        <div className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">{log.group}</div>
+                        <div className="text-xs font-extrabold text-slate-800 truncate">{log.name}</div>
+                        <div className="text-[10px] text-[#00A8CC] font-mono font-bold">{log.employee_id} • <span className="text-slate-400 font-normal">{log.group}</span></div>
                       </div>
                     </div>
                     
-                    <div className="text-right">
+                    <div className="text-right flex flex-col items-end">
                       <div className="text-[10px] text-slate-400 font-bold font-mono">{new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-                      <span className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase mt-0.5 inline-block ${
-                        log.status === 'LATE' 
-                          ? 'bg-[#4DC2DB]/10 text-[#00819D] border border-[#4DC2DB]/20' 
-                          : 'bg-[#00A8CC]/10 text-[#00A8CC] border border-[#00A8CC]/20'
-                      }`}>
-                        {log.status}
-                      </span>
+                      <div className="flex items-center space-x-1 mt-0.5">
+                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase ${
+                          log.action_type === 'CHECK_OUT'
+                            ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                            : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                        }`}>
+                          {log.action_type || 'CHECK_IN'}
+                        </span>
+                        <span className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase ${
+                          log.status === 'LATE' 
+                            ? 'bg-[#4DC2DB]/10 text-[#00819D] border border-[#4DC2DB]/20' 
+                            : log.status === 'CHECK OUT'
+                            ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                            : 'bg-[#00A8CC]/10 text-[#00A8CC] border border-[#00A8CC]/20'
+                        }`}>
+                          {log.status}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 ))

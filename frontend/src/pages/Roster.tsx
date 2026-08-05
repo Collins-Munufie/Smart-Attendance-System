@@ -235,7 +235,14 @@ export const Roster: React.FC = () => {
                     users.map((item) => (
                       <tr key={item.id} className="hover:bg-slate-50 text-xs transition-colors duration-150">
                         <td className="py-3.5 px-6 font-bold text-[#00A8CC]">{item.employee_id}</td>
-                        <td className="py-3.5 px-6 font-bold text-slate-800">{item.name}</td>
+                        <td className="py-3.5 px-6 font-bold text-slate-800 flex items-center space-x-2.5">
+                          <img 
+                            src={item.avatar_url || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150"} 
+                            alt={item.name} 
+                            className="w-7 h-7 rounded-lg object-cover border border-slate-200"
+                          />
+                          <span>{item.name}</span>
+                        </td>
                         <td className="py-3.5 px-6 text-slate-500">{item.group}</td>
                         <td className="py-3.5 px-6">
                           {item.is_enrolled ? (

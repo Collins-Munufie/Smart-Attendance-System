@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Camera, MapPin, ShieldAlert, BadgeCheck, AlertCircle, RefreshCw } from 'lucide-react';
+import { Camera, MapPin, ShieldAlert, BadgeCheck, AlertCircle, RefreshCw, LogIn, LogOut, Lock } from 'lucide-react';
 import api from '../services/api';
 
 export const CheckInCamera: React.FC = () => {
@@ -11,6 +11,10 @@ export const CheckInCamera: React.FC = () => {
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [gpsError, setGpsError] = useState(false);
   
+  const [actionType, setActionType] = useState<'CHECK_IN' | 'CHECK_OUT'>('CHECK_IN');
+  const [isCheckedIn, setIsCheckedIn] = useState<boolean>(false);
+  const [lastLogTime, setLastLogTime] = useState<string | null>(null);
+
   const [useLiveness, setUseLiveness] = useState(false);
   const [challenge, setChallenge] = useState<string | null>(null);
   const [livenessPassed, setLivenessPassed] = useState(false);
@@ -23,6 +27,27 @@ export const CheckInCamera: React.FC = () => {
     turn_right: 'TURN HEAD TO THE RIGHT',
     smile: 'SMILE DIRECTLY AT CAMERA',
   };
+
+  const fetchAttendanceStatus = async () => {
+    try {
+      const res = await api.get('/api/v1/attendance/my-status');
+      setIsCheckedIn(res.data.is_checked_in);
+      if (res.data.last_log_time) {
+        setLastLogTime(res.data.last_log_time);
+      }
+      if (res.data.is_checked_in) {
+        setActionType('CHECK_OUT');
+      } else {
+        setActionType('CHECK_IN');
+      }
+    } catch (err) {
+      console.error("Error fetching attendance status:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchAttendanceStatus();
+  }, []);
 
   const playSound = (type: 'success' | 'error') => {
     try {
@@ -124,7 +149,7 @@ export const CheckInCamera: React.FC = () => {
             } else {
               setLivenessPassed(true);
               setChallenge(null);
-              setFeedback({ type: 'success', message: 'Biometric liveness verified. Submitting check-in log...' });
+              setFeedback({ type: 'success', message: 'Biometric liveness verified. Submitting log...' });
               submitFaceCheckIn(frameData);
             }
           }
@@ -162,6 +187,12 @@ export const CheckInCamera: React.FC = () => {
 
   const handleAction = () => {
     setFeedback({ type: null, message: '' });
+    
+    if (actionType === 'CHECK_OUT' && !isCheckedIn) {
+      setFeedback({ type: 'error', message: 'Check Out is disabled. You must successfully check in first.' });
+      return;
+    }
+
     const frame = captureFrameBase64();
     if (!frame) {
       setFeedback({ type: 'error', message: 'Failed to capture frame. Please ensure camera is loaded.' });
@@ -180,20 +211,23 @@ export const CheckInCamera: React.FC = () => {
     try {
       const response = await api.post('/api/v1/check-in/face', {
         image: frameData,
+        action_type: actionType,
         latitude: coords?.latitude || 37.7749,
         longitude: coords?.longitude || -122.4194,
         location_name: "HQ Gate Lobby"
       });
 
       playSound('success');
+      const actionText = actionType === 'CHECK_IN' ? 'Checked In' : 'Checked Out';
       setFeedback({ 
         type: 'success', 
-        message: `Welcome, ${response.data.name}! Logged ${response.data.status} at ${new Date(response.data.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` 
+        message: `Success! ${response.data.name} ${actionText} (${response.data.status}) at ${new Date(response.data.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` 
       });
       
       setLivenessPassed(false);
       setChallenge(null);
       setChallengeStep(0);
+      fetchAttendanceStatus();
     } catch (err: any) {
       playSound('error');
       const errDetail = err.response?.data?.detail || "Network request failed. Try again.";
@@ -205,6 +239,45 @@ export const CheckInCamera: React.FC = () => {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
+      {/* Check In / Check Out Mode Selector */}
+      <div className="glass-panel p-2 rounded-2xl border border-slate-200 flex items-center justify-between shadow-sm">
+        <div className="grid grid-cols-2 gap-2 w-full">
+          <button
+            type="button"
+            onClick={() => setActionType('CHECK_IN')}
+            className={`py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center space-x-2 transition-all duration-200 ${
+              actionType === 'CHECK_IN'
+                ? 'bg-[#00A8CC] text-white shadow-md'
+                : 'bg-transparent text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <LogIn size={16} />
+            <span>CHECK IN</span>
+            {isCheckedIn && <span className="text-[10px] bg-emerald-500/20 text-emerald-100 px-1.5 py-0.5 rounded-full ml-1 font-normal">Active</span>}
+          </button>
+
+          <button
+            type="button"
+            disabled={!isCheckedIn}
+            onClick={() => {
+              if (isCheckedIn) setActionType('CHECK_OUT');
+            }}
+            title={!isCheckedIn ? "Must check in first before check out is available" : "Click to Check Out"}
+            className={`py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center space-x-2 transition-all duration-200 ${
+              actionType === 'CHECK_OUT'
+                ? 'bg-purple-600 text-white shadow-md'
+                : !isCheckedIn
+                ? 'bg-slate-100 text-slate-400 cursor-not-allowed opacity-60'
+                : 'bg-transparent text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            {!isCheckedIn ? <Lock size={16} className="text-slate-400" /> : <LogOut size={16} />}
+            <span>CHECK OUT</span>
+            {!isCheckedIn && <span className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold">(Locked)</span>}
+          </button>
+        </div>
+      </div>
+
       {/* Video stream box */}
       <div className="glass-panel rounded-3xl border border-slate-200 p-6 relative overflow-hidden shadow-glass">
         {/* Decorative brackets */}
@@ -302,10 +375,18 @@ export const CheckInCamera: React.FC = () => {
 
         <button
           onClick={handleAction}
-          disabled={loading || !stream}
-          className="w-full py-4 bg-[#00A8CC] hover:bg-[#00819D] text-white rounded-xl font-bold shadow-lg shadow-[#00A8CC]/15 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 uppercase tracking-widest text-xs"
+          disabled={loading || !stream || (actionType === 'CHECK_OUT' && !isCheckedIn)}
+          className={`w-full py-4 rounded-xl font-bold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 uppercase tracking-widest text-xs text-white ${
+            actionType === 'CHECK_OUT' ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-600/15' : 'bg-[#00A8CC] hover:bg-[#00819D] shadow-[#00A8CC]/15'
+          }`}
         >
-          {loading ? 'Processing Verification...' : challenge ? 'Awaiting Liveness movement...' : 'Verify Biometrics & Check In'}
+          {loading 
+            ? 'Processing Verification...' 
+            : challenge 
+            ? 'Awaiting Liveness movement...' 
+            : actionType === 'CHECK_OUT'
+            ? 'Verify Biometrics & Check Out'
+            : 'Verify Biometrics & Check In'}
         </button>
       </div>
 
@@ -314,3 +395,4 @@ export const CheckInCamera: React.FC = () => {
   );
 };
 export default CheckInCamera;
+

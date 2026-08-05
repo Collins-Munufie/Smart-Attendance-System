@@ -39,12 +39,13 @@ export const Logs: React.FC = () => {
   const downloadCSV = () => {
     if (logs.length === 0) return;
     
-    const headers = ['Log ID', 'Employee ID', 'Name', 'Department', 'Timestamp', 'Status', 'Verification Method', 'Score'];
+    const headers = ['Log ID', 'Employee ID', 'Name', 'Department', 'Action', 'Timestamp', 'Status', 'Verification Method', 'Score'];
     const rows = logs.map(log => [
       log.id,
       log.employee_id,
       `"${log.name}"`,
       `"${log.group}"`,
+      log.action_type || 'CHECK_IN',
       new Date(log.timestamp).toLocaleString(),
       log.status,
       log.method,
@@ -113,6 +114,7 @@ export const Logs: React.FC = () => {
                 <th className="py-4 px-6">ID</th>
                 <th className="py-4 px-6">Name</th>
                 <th className="py-4 px-6">Department</th>
+                <th className="py-4 px-6">Action</th>
                 <th className="py-4 px-6">Method</th>
                 <th className="py-4 px-6">Similarity Score</th>
                 <th className="py-4 px-6 text-right">Status</th>
@@ -126,8 +128,24 @@ export const Logs: React.FC = () => {
                       {new Date(log.timestamp).toLocaleString([], { dateStyle: 'short', timeStyle: 'medium' })}
                     </td>
                     <td className="py-3.5 px-6 font-bold text-[#00A8CC]">{log.employee_id}</td>
-                    <td className="py-3.5 px-6 font-bold text-slate-800">{log.name}</td>
+                    <td className="py-3.5 px-6 font-bold text-slate-800 flex items-center space-x-2.5">
+                      <img 
+                        src={log.avatar_url || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150"} 
+                        alt={log.name}
+                        className="w-7 h-7 rounded-lg object-cover border border-slate-200"
+                      />
+                      <span>{log.name}</span>
+                    </td>
                     <td className="py-3.5 px-6 text-slate-500">{log.group}</td>
+                    <td className="py-3.5 px-6 font-semibold">
+                      <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase ${
+                        log.action_type === 'CHECK_OUT' 
+                          ? 'bg-purple-100 text-purple-700 border border-purple-200' 
+                          : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                      }`}>
+                        {log.action_type || 'CHECK_IN'}
+                      </span>
+                    </td>
                     <td className="py-3.5 px-6 font-semibold text-slate-600">{log.method}</td>
                     <td className="py-3.5 px-6 font-mono text-slate-500">
                       {log.verification_score !== null ? (
@@ -140,6 +158,8 @@ export const Logs: React.FC = () => {
                       <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded uppercase ${
                         log.status === 'LATE' 
                           ? 'bg-warning/10 text-warning border border-warning/10' 
+                          : log.status === 'CHECK OUT'
+                          ? 'bg-purple-100 text-purple-700 border border-purple-200'
                           : 'bg-success/10 text-success border border-success/10'
                       }`}>
                         {log.status}
@@ -149,7 +169,7 @@ export const Logs: React.FC = () => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-slate-400 font-medium">No check-in logs found. Run check-ins in the camera page.</td>
+                  <td colSpan={8} className="text-center py-12 text-slate-400 font-medium">No check-in logs found. Run check-ins in the camera page.</td>
                 </tr>
               )}
             </tbody>
