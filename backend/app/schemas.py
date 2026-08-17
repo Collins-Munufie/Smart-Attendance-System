@@ -152,3 +152,11 @@ class RFIDCheckInRequest(BaseModel):
     rfid_card: str = Field(..., description="RFID card unique identification tag")
     action_type: str = Field("CHECK_IN", description="CHECK_IN or CHECK_OUT")
     location_name: str = Field("RFID Gate Reader", description="Check-in reader location")
+
+class MFACheckInRequest(BaseModel):
+    rfid_card: str = Field(..., description="RFID card unique identification tag")
+    image: str = Field(..., description="Base64 frame or data URL of the face")
+    action_type: str = Field("CHECK_IN", description="CHECK_IN or CHECK_OUT")
+    latitude: Optional[float] = Field(None, description="GPS Latitude")
+    longitude: Optional[float] = Field(None, description="GPS Longitude")
+    location_name: str = Field("HQ Entrance", description="Check-in location")

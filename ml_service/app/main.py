@@ -68,6 +68,10 @@ class LivenessChallengeRequest(BaseModel):
     image: str = Field(..., description="Base64 image frame")
     challenge_type: str = Field("blink", description="Type of challenge: blink, turn_left, turn_right, nod_up, smile, center")
 
+class VerifyFace1to1Request(BaseModel):
+    image: str = Field(..., description="Base64 image frame to verify")
+    user_id: str = Field(..., description="Enterprise User ID to compare against")
+
 @app.get("/health")
 def health_check():
     return {
@@ -223,6 +227,54 @@ async def verify_liveness(request: LivenessChallengeRequest):
     img = decode_base64_image(request.image)
     result = liveness_detector.analyze_frame(img, request.challenge_type)
     return result
+
+@app.post("/verify-face-1to1")
+async def verify_face_1to1(request: VerifyFace1to1Request):
+    # 1. Decode base64 image
+    img = decode_base64_image(request.image)
+    
+    # 2. Detect face
+    faces = detector.detect(img)
+    if not faces:
+        raise HTTPException(status_code=400, detail="No face detected in the image for verification")
+        
+    # Get embedding for the largest face
+    faces.sort(key=lambda f: f["box"][2] * f["box"][3], reverse=True)
+    x, y, fw, fh = faces[0]["box"]
+    h, w = img.shape[:2]
+    x1, y1 = max(0, x), max(0, y)
+    x2, y2 = min(w, x + fw), min(h, y + fh)
+    
+    cropped_face = img[y1:y2, x1:x2]
+    emb = embedder.get_embedding(cropped_face)
+    
+    # 3. Retrieve enrolled embeddings for user_id
+    enrolled_embs = vector_db.get_user_embeddings(request.user_id)
+    if not enrolled_embs:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"User {request.user_id} has no face embeddings enrolled in vector database"
+        )
+        
+    # Calculate average of enrolled embeddings
+    avg_enrolled_emb = np.mean(enrolled_embs, axis=0)
+    norm = np.linalg.norm(avg_enrolled_emb)
+    if norm > 0:
+        avg_enrolled_emb = avg_enrolled_emb / norm
+        
+    # Compute Cosine Similarity (inner product of normalized vectors)
+    similarity = float(np.dot(emb, avg_enrolled_emb))
+    
+    is_match = similarity >= settings.FACE_SIMILARITY_THRESHOLD
+    
+    return {
+        "face_detected": True,
+        "box": faces[0]["box"],
+        "confidence": faces[0]["confidence"],
+        "user_id": request.user_id,
+        "similarity": similarity,
+        "is_match": is_match
+    }
 
 if __name__ == "__main__":
     import uvicorn

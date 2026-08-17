@@ -19,6 +19,8 @@ export const CheckInCamera: React.FC = () => {
   const [challenge, setChallenge] = useState<string | null>(null);
   const [livenessPassed, setLivenessPassed] = useState(false);
   const [challengeStep, setChallengeStep] = useState(0);
+  const [useMFA, setUseMFA] = useState(false);
+  const [rfidCard, setRfidCard] = useState('');
 
   const challengesList = ['blink', 'turn_left', 'turn_right', 'smile'];
   const challengeLabels: Record<string, string> = {
@@ -149,8 +151,13 @@ export const CheckInCamera: React.FC = () => {
             } else {
               setLivenessPassed(true);
               setChallenge(null);
+              setChallengeStep(0);
               setFeedback({ type: 'success', message: 'Biometric liveness verified. Submitting log...' });
-              submitFaceCheckIn(frameData);
+              if (useMFA) {
+                submitMfaCheckIn(frameData);
+              } else {
+                submitFaceCheckIn(frameData);
+              }
             }
           }
         } catch (err) {
@@ -160,7 +167,7 @@ export const CheckInCamera: React.FC = () => {
     }
     
     return () => clearInterval(intervalId);
-  }, [stream, useLiveness, livenessPassed, challenge, challengeStep]);
+  }, [stream, useLiveness, livenessPassed, challenge, challengeStep, useMFA, rfidCard]);
 
   const initLivenessChallenge = () => {
     setLivenessPassed(false);
@@ -193,6 +200,11 @@ export const CheckInCamera: React.FC = () => {
       return;
     }
 
+    if (useMFA && !rfidCard.trim()) {
+      setFeedback({ type: 'error', message: 'RFID card input is required for Multi-Factor Check-In.' });
+      return;
+    }
+
     const frame = captureFrameBase64();
     if (!frame) {
       setFeedback({ type: 'error', message: 'Failed to capture frame. Please ensure camera is loaded.' });
@@ -202,7 +214,48 @@ export const CheckInCamera: React.FC = () => {
     if (useLiveness && !livenessPassed) {
       initLivenessChallenge();
     } else {
-      submitFaceCheckIn(frame);
+      if (useMFA) {
+        submitMfaCheckIn(frame);
+      } else {
+        submitFaceCheckIn(frame);
+      }
+    }
+  };
+
+  const submitMfaCheckIn = async (frameData: string) => {
+    if (!rfidCard.trim()) {
+      setFeedback({ type: 'error', message: 'RFID card number is required for MFA Check-In.' });
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await api.post('/api/v1/check-in/mfa', {
+        rfid_card: rfidCard,
+        image: frameData,
+        action_type: actionType,
+        latitude: coords?.latitude || 37.7749,
+        longitude: coords?.longitude || -122.4194,
+        location_name: "HQ Gate Lobby"
+      });
+
+      playSound('success');
+      const actionText = actionType === 'CHECK_IN' ? 'Checked In' : 'Checked Out';
+      setFeedback({ 
+        type: 'success', 
+        message: `Success (MFA)! ${response.data.name} ${actionText} (${response.data.status}) at ${new Date(response.data.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` 
+      });
+      
+      setLivenessPassed(false);
+      setChallenge(null);
+      setChallengeStep(0);
+      setRfidCard('');
+      fetchAttendanceStatus();
+    } catch (err: any) {
+      playSound('error');
+      const errDetail = err.response?.data?.detail || "Network request failed. Try again.";
+      setFeedback({ type: 'error', message: errDetail });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -328,7 +381,7 @@ export const CheckInCamera: React.FC = () => {
 
       {/* Control panel and logs */}
       <div className="glass-card rounded-2xl p-5 border border-slate-200 space-y-4">
-        <div className="flex justify-between items-center">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
           <div className="flex items-center space-x-2 text-xs font-semibold text-slate-500">
             <MapPin size={14} className={gpsError ? "text-danger" : "text-primary-500"} />
             <span>
@@ -338,21 +391,52 @@ export const CheckInCamera: React.FC = () => {
             </span>
           </div>
 
-          <label className="flex items-center space-x-2 cursor-pointer select-none">
-            <input 
-              type="checkbox" 
-              checked={useLiveness}
-              onChange={() => {
-                setUseLiveness(!useLiveness);
-                setLivenessPassed(false);
-                setChallenge(null);
-              }}
-              className="sr-only peer"
-            />
-            <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:height-4 after:w-4 after:transition-all peer-checked:bg-primary-500 relative after:h-4 after:w-4"></div>
-            <span className="text-xs font-bold text-slate-500">Enable Liveness</span>
-          </label>
+          <div className="flex items-center space-x-4">
+            <label className="flex items-center space-x-2 cursor-pointer select-none">
+              <input 
+                type="checkbox" 
+                checked={useLiveness}
+                onChange={() => {
+                  setUseLiveness(!useLiveness);
+                  setLivenessPassed(false);
+                  setChallenge(null);
+                }}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:height-4 after:w-4 after:transition-all peer-checked:bg-primary-500 relative after:h-4 after:w-4"></div>
+              <span className="text-xs font-bold text-slate-500">Enable Liveness</span>
+            </label>
+
+            <label className="flex items-center space-x-2 cursor-pointer select-none">
+              <input 
+                type="checkbox" 
+                checked={useMFA}
+                onChange={() => {
+                  setUseMFA(!useMFA);
+                  setFeedback({ type: null, message: '' });
+                }}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:height-4 after:w-4 after:transition-all peer-checked:bg-purple-600 relative after:h-4 after:w-4"></div>
+              <span className="text-xs font-bold text-slate-500">MFA Mode</span>
+            </label>
+          </div>
         </div>
+
+        {useMFA && (
+          <div className="space-y-1.5 animate-fadeIn">
+            <label className="text-[10px] font-extrabold text-slate-450 uppercase tracking-wider block">
+              RFID Card Tag ID
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. EMP-1011 card details or swipe badge"
+              value={rfidCard}
+              onChange={(e) => setRfidCard(e.target.value)}
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-xs font-semibold focus:outline-none focus:border-purple-500 transition-all duration-200"
+            />
+          </div>
+        )}
 
         {feedback.message && (
           <div className={`p-4 rounded-xl flex items-center space-x-3 text-xs border ${

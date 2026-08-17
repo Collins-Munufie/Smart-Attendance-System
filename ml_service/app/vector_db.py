@@ -131,6 +131,30 @@ class FAISSIndexManager:
                     
         return results
 
+    def get_user_embeddings(self, user_id: str) -> List[np.ndarray]:
+        """Retrieves all registered face embedding vectors for a user."""
+        if user_id not in self.user_to_ids:
+            return []
+            
+        ids = self.user_to_ids[user_id]
+        embeddings = []
+        
+        if self.faiss_available and self.index is not None:
+            for idx in ids:
+                try:
+                    vec = self.index.reconstruct(idx)
+                    embeddings.append(vec)
+                except Exception as e:
+                    logger.error(f"Error reconstructing vector for index {idx}: {e}")
+        else:
+            # Fallback mode
+            for idx in ids:
+                if idx in self.fallback_ids:
+                    fallback_idx = self.fallback_ids.index(idx)
+                    embeddings.append(self.fallback_vectors[fallback_idx])
+                    
+        return embeddings
+
     def remove_user(self, user_id: str) -> bool:
         """
         Deletes a user's embeddings from the database.

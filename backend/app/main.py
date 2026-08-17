@@ -15,7 +15,8 @@ from app.schemas import (
     Token, UserCreate, UserUpdate, UserResponse, UserProfileUpdate,
     AttendanceLogResponse, AttendanceStatusResponse, GeofenceRuleCreate, GeofenceRuleResponse,
     RuleConfigurationCreate, RuleConfigurationResponse, DashboardStats,
-    DailyLogChartItem, FaceCheckInRequest, RFIDCheckInRequest, FaceLoginRequest
+    DailyLogChartItem, FaceCheckInRequest, RFIDCheckInRequest, FaceLoginRequest,
+    MFACheckInRequest
 )
 from app.auth import (
     create_access_token, get_current_active_user, get_current_admin,
@@ -415,6 +416,104 @@ def check_in_by_rfid(request: RFIDCheckInRequest, db: Session = Depends(get_db))
         location=request.location_name,
         score=1.0
     )
+    return log
+
+
+# --- MFA check-in ---
+@app.post("/api/v1/check-in/mfa", response_model=AttendanceLogResponse)
+def check_in_by_mfa(request: MFACheckInRequest, db: Session = Depends(get_db)):
+    # 1. Geofence location check
+    geofence_rules = db.query(crud.GeofenceRule).filter(crud.GeofenceRule.is_active == True).all()
+    if geofence_rules and (request.latitude is None or request.longitude is None):
+        raise HTTPException(status_code=400, detail="GPS coordinates required to satisfy active geofence boundaries")
+        
+    if geofence_rules:
+        is_inside, distance, fence_name = check_geofence(request.latitude, request.longitude, geofence_rules)
+        if not is_inside:
+            logger.warning(f"GPS Geofencing verification failed for MFA. User distance: {distance}m from {fence_name}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Out of boundary error: You are {round(distance, 1)}m away from permitted workspace geofence '{fence_name}'"
+            )
+            
+    # 2. Retrieve user record by RFID
+    user = crud.get_user_by_rfid(db, request.rfid_card)
+    if not user:
+        raise HTTPException(
+            status_code=404, 
+            detail="RFID Card unrecognized: Tag ID does not map to any employee"
+        )
+        
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Account mapped to RFID tag is deactivated")
+        
+    if not user.is_enrolled:
+        raise HTTPException(status_code=400, detail="Employee has not enrolled biometric face template yet")
+        
+    # 3. Call ML service to verify face matches user_id 1:1
+    try:
+        res = requests.post(
+            f"{settings.ML_SERVICE_URL}/verify-face-1to1",
+            json={"image": request.image, "user_id": user.employee_id},
+            timeout=10
+        )
+        if res.status_code != 200:
+            err_msg = res.json().get("detail", "ML 1:1 Face Verification failed")
+            raise HTTPException(status_code=res.status_code, detail=err_msg)
+            
+        data = res.json()
+        if not data.get("is_match"):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="MFA Biometric verification failed: face does not match the RFID cardholder"
+            )
+            
+        score = data.get("similarity", 0.0)
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Connection error to ML Service during MFA check-in: {e}")
+        raise HTTPException(status_code=503, detail="Face recognition engine is offline")
+        
+    action_type = request.action_type if request.action_type in ["CHECK_IN", "CHECK_OUT"] else "CHECK_IN"
+
+    # Validate check-out requirement
+    status_info = crud.get_user_today_attendance_status(db, user.employee_id)
+    if action_type == "CHECK_OUT" and not status_info["is_checked_in"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot check out: You must check in first before checking out."
+        )
+
+    # 4. Determine status label
+    if action_type == "CHECK_OUT":
+        status_label = "CHECK OUT"
+    else:
+        config = crud.get_rule_config(db)
+        now = datetime.datetime.now()
+        try:
+            sh_hour, sh_min = map(int, config.shift_start_time.split(":"))
+            shift_time = now.replace(hour=sh_hour, minute=sh_min, second=0, microsecond=0)
+        except Exception:
+            shift_time = now.replace(hour=9, minute=0, second=0, microsecond=0)
+            
+        allowed_limit = shift_time + datetime.timedelta(minutes=config.late_threshold_minutes + config.grace_period_minutes)
+        status_label = "ON TIME"
+        if now > allowed_limit:
+            status_label = "LATE"
+        
+    # 5. Write log to database
+    log = crud.create_attendance_log(
+        db,
+        user_id=user.id,
+        employee_id=user.employee_id,
+        name=user.name,
+        group=user.group,
+        action_type=action_type,
+        status=status_label,
+        method="MFA (RFID + Face ID)",
+        location=request.location_name,
+        score=score
+    )
+    
     return log
 
 
